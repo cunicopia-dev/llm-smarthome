@@ -6,3 +6,16 @@ boto3
 pg8000
 psycopg2-binary
 jupyter
+langchain
+chromadb
+transformers
+protobuf>=3.19.5,<5.0.0
+unstructured
+pdf2image
+pdfminer
+pdfminer.six
+onnx 
+opencv-python
+opencv-contrib-python
+unstructured-inference
+pikepdf
