@@ -157,3 +157,4 @@ cython_debug/
 #.idea/
 speech.wav
 enhanced_speech.wav
+speech.wav
