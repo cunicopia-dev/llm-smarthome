@@ -19,3 +19,4 @@ opencv-python
 opencv-contrib-python
 unstructured-inference
 pikepdf
+pocketsphinx
