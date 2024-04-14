@@ -1,110 +1,76 @@
-import random
-import re
+import json
 import subprocess
-import sounddevice as sd
-import numpy as np
-from pocketsphinx import LiveSpeech
-import ollama  # Assuming this is your custom module
-from ollama import chat
 import threading
-import time 
+import sounddevice as sd
+from pocketsphinx import LiveSpeech
+from ollama import chat
 
-def generate_model_input(question):
-    question = question.lower()
-    return question
+def load_prompts(file_path):
+    with open(file_path, 'r') as file:
+        prompts = json.load(file)
+    return prompts
 
-def generate_base_response(question, history, model='mistral:7b-instruct-v0.2-fp16', assistant_name='Plex'):
-    system_prompt = f"""
-    You are {assistant_name}, an AI assistant created by Cunicopia to be helpful, harmless, and honest. 
-    You are interacting with them via voice chat, which is highly interactive, so keep your responses very brief for a more engaging conversation.
-    Focus on addressing the user's specific needs and keep the conversation on-topic. 
-    If you need to break down complex topics, use clear explanations, analogies, or examples to ensure the user's understanding. Rely on your vast knowledge to provide insightful and valuable information. Always prioritize the user's well-being and aim to have a positive impact through your interactions.
-    """
-    history.append({'role': 'system', 'content': system_prompt})
+def get_system_prompt(prompts, prompt_id=None):
+    if prompt_id and prompt_id in prompts:
+        return prompts[prompt_id]['description']
+    else:
+        return prompts['1']['description']  # Default to base assistant prompt
+
+def save_chat_history(history):
+    with open('chat.json', 'w') as file:
+        json.dump(history, file, indent=4)
+
+def load_chat_history():
+    try:
+        with open('chat.json', 'r') as file:
+            return json.load(file)
+    except FileNotFoundError:
+        return []
+
+def generate_base_response(question, history, model, assistant_name, system_prompt, language, add_system_prompt=False):
+    if add_system_prompt:
+        # Add system prompt only on the first interaction of each session
+        history.append({'role': 'system', 'content': system_prompt})
     history.append({'role': 'user', 'content': question})
     stream = chat(
         model=model,
         messages=history,
         stream=True,
     )
-    print(f'{assistant_name}: ', end='', flush=True)
     response = ""
     for chunk in stream:
         if 'message' in chunk:
             content = chunk['message']['content']
             response += content
-            print(content, end='', flush=True)
-
+            print({content}', end='', flush=True)
     print('\n')
     history.append({'role': 'assistant', 'content': response})
-    
-    # Use Pico TTS to speak out the response
-    text_to_speech_pico(response)
-
+    text_to_speech_pico(response, language)
+    save_chat_history(history)  # Save chat history after each interaction
     return response
 
-def text_to_speech_pico(text, output="speech.wav", language="en-GB"):
-    """Convert text to speech using Pico TTS with a selectable voice."""
-    command = [
-        "pico2wave",
-        "--wave", output,
-        "--lang", language,
-        text
-    ]
+def text_to_speech_pico(text, language="en-US"):
+    output = "speech.wav"
+    command = ["pico2wave", "--wave", output, "--lang", language, text]
     subprocess.run(command, check=True)
-    # Enhance and play the generated speech file
     enhance_audio_quality(output)
 
-
-def enhance_audio_quality(input_file, output_file="enhanced_speech.wav"):
-    """Enhance audio quality using ffmpeg."""
-    command = [
-        "ffmpeg",
-        "-y",  # Automatically overwrite the output file if it exists
-        "-i", input_file,
-        "-ac", "2",  # Set audio channels to 2 (stereo)
-        "-ar", "44100",  # Set audio sample rate to 44100 Hz
-        "-sample_fmt", "s16",  # Set audio sample format to 16-bit depth
-        output_file
-    ]
+def enhance_audio_quality(input_file):
+    output_file = "enhanced_speech.wav"
+    command = ["ffmpeg", "-y", "-i", input_file, "-ac", "2", "-ar", "44100", "-sample_fmt", "s16", output_file]
     subprocess.run(command, check=True)
-    # Play the enhanced audio file
     play_audio(output_file)
 
 def play_audio(file_path):
-    """Play audio file with the ability to stop playback."""
     def run_player():
         subprocess.run(["aplay", file_path])
-
-    # Use a threading event to stop playback
-    stop_event = threading.Event()
     player_thread = threading.Thread(target=run_player)
-
-    def check_stop():
-        input("Press Enter to stop playback...\n")
-        stop_event.set()
-        if player_thread.is_alive():
-            # Kill 'aplay' process if running
-            subprocess.run(["pkill", "aplay"])
-
-    # Start player and stop checker threads
     player_thread.start()
-    threading.Thread(target=check_stop).start()
-    player_thread.join()
+    input("Press Enter to stop playback...\n")
+    subprocess.run(["pkill", "aplay"])
 
 def record_and_recognize():
-    """Record from the microphone and recognize speech using PocketSphinx. Allow the user to accept or reject each recognized phrase."""
     print("Recording... Speak now. Press Enter to stop.")
-
-    # Set up threading to listen for Enter key press
-    key_pressed = threading.Event()
-    def wait_for_input():
-        input()  # Waits for the Enter key press
-        key_pressed.set()  # Set the event to signal the recording should stop
-
-    input_thread = threading.Thread(target=wait_for_input)
-    input_thread.start()
-    
     speech = LiveSpeech(
         verbose=False,
         sampling_rate=16000,
@@ -112,32 +78,34 @@ def record_and_recognize():
         no_search=False,
         full_utt=True
     )
-    
     recognized_text = ""
     try:
         for phrase in speech:
-            if key_pressed.is_set():
-                print("Stopping recording.")
-                break
-            if phrase:
-                print('Recognized:', str(phrase))
-                # Ask user if the recognized phrase is good or bad
-                response = input("Keep this phrase? (y/n): ").strip().lower()
-                if response == 'y':
-                    recognized_text += str(phrase) + " "
-                elif response == 'n':
-                    print("Phrase discarded.")
-                else:
-                    print("Invalid response, phrase kept by default.")
-                    recognized_text += str(phrase) + " "
+            print('Recognized:', str(phrase))
+            recognized_text += str(phrase) + " "
     except KeyboardInterrupt:
         print("Recording manually stopped.")
-    
-    input_thread.join()  # Ensure the input thread has finished
     return recognized_text.strip()
 
 
 def main():
+    print("\n")
+    print("Welcome to the conversational AI!")
+    load_history = input("Do you want to load the previous chat history? (yes/no): ").strip().lower()
+    print("\n")
+    conversation_history = load_chat_history() if load_history == 'yes' else []
+    add_system_prompt = not conversation_history  # Add system prompt only if no history loaded
+
+
+    prompts = load_prompts('./src/prompts/system_prompts.json')
+    print("Available System Prompts:")
+    for key, value in prompts.items():
+        print(f"{key}: {value['one_word_description']} - {value['description']}")
+    print("\n")
+    prompt_id = input("Enter the ID of the system prompt you want to use (leave blank for default): ")
+    system_prompt = get_system_prompt(prompts, prompt_id)
+    print("\n")
+
     voices = {
         '1': 'en-GB',
         '2': 'en-US',
@@ -147,57 +115,53 @@ def main():
         '6': 'it-IT'
     }
     model_list = {
-        1: 'mistral',
+        1: 'mistral:latest',
         2: 'mistral:7b-instruct-v0.2-fp16', 
-        3: 'dolphin-mistral'
+        3: 'dolphin-mixtral:latest'
     }
 
-    print("Welcome to the conversational AI!")
-    print("Type 'quit' to exit the conversation.\n")
-
-    # Select a model
     print("Select a model to use:")
+    print("\n")
     for key, value in model_list.items():
         print(f"{key}: {value}")
+        
+    print("\n")
     model_choice = input("Enter the number of the model you want to use: ").strip()
-    if model_choice.isdigit():
-        model_choice = int(model_choice)
-        model = model_list.get(model_choice, model_list[2])  # Default model if invalid choice
+    if model_choice.isdigit() and int(model_choice) in model_list:
+        model = model_list[int(model_choice)]
     else:
-        model = model_list[2]  # Default model if no input
+        model = model_list[2]  # Default model if invalid choice
         print(f"Invalid or no model choice. Using default model '{model}'.")
 
-    # Select a voice
     print("Select a voice:")
+    print("\n")
     for key, value in voices.items():
         print(f"{key}: {value}")
+    print("\n")
     choice = input("Enter the number of the voice you want to use: ").strip()
     language = voices.get(choice, 'en-GB')  # Default voice if invalid choice
-    if choice not in voices:
-        print("Invalid or no choice. Using default voice 'en-GB'.")
 
-    # Assistant name
     assistant_name = input("Enter the name for the assistant: ").strip()
     if not assistant_name:
         assistant_name = 'Plex'  # Default name if no input
         print("No name entered. Using default name 'Plex'.")
 
-    conversation_history = []
     while True:
-        print("Press Enter to use speech-to-text or type 'quit' to exit: ")
-        trigger = input()
-        if trigger.lower() == 'quit':
+        user_input = input("Type 'speak' to record, enter your text directly, or type 'quit' to exit:")
+        if user_input.lower() == 'quit':
             print("Goodbye!")
             break
-        elif trigger == '':
+        elif user_input.lower() == 'speak':
             recognized_text = record_and_recognize()
-            print("Recognized text:", recognized_text)
             if recognized_text:
-                generate_base_response(recognized_text, conversation_history, model=model, assistant_name=assistant_name)
+                print("Recognized text:", recognized_text)
+                generate_base_response(recognized_text, conversation_history, model, assistant_name, system_prompt, language, add_system_prompt)
+                add_system_prompt = False  # Prevent further system prompt inclusion
             else:
                 print("No speech recognized. Please try again.")
         else:
-            generate_base_response(trigger, conversation_history, model=model, assistant_name=assistant_name)
+            generate_base_response(user_input, conversation_history, model, assistant_name, system_prompt, language, add_system_prompt)
+            add_system_prompt = False  # Prevent further system prompt inclusion
 
 if __name__ == '__main__':
     main()
