@@ -1,83 +1,89 @@
+import streamlit as st
 import json
 from ollama import chat
 
-def load_prompts(file_path):
-    with open(file_path, 'r') as file:
-        prompts = json.load(file)
-    return prompts
+class ConversationalAIApp:
+    def __init__(self):
+        self.set_system_prompt = True
+        self.load_prompts('./src/prompts/system_prompts.json')
+        self.model_list = {
+            1: 'mixtral',
+            2: 'mistral:7b-instruct-v0.2-fp16',
+            3: 'dolphin-mixtral'
+        }
 
-def get_system_prompt(prompts, prompt_id=None):
-    if prompt_id and prompt_id in prompts:
-        return prompts[prompt_id]['description']
-    else:
-        return prompts['1']['description']  # Default to base assistant prompt
+    def load_prompts(self, file_path):
+        with open(file_path, 'r') as file:
+            self.prompts = json.load(file)
 
-def save_chat_history(history):
-    with open('chat.json', 'w') as file:
-        json.dump(history, file, indent=4)
+    def get_system_prompt(self, prompt_id=None):
+        return self.prompts.get(prompt_id, self.prompts['1'])['description']
 
-def load_chat_history():
-    try:
-        with open('chat.json', 'r') as file:
-            return json.load(file)
-    except FileNotFoundError:
-        return []
+    def generate_response(self, question, model, system_prompt, set_system_prompt):
+        if question.strip():  # Ensure we don't process empty questions
+            st.session_state['request_in_progress'] = True
+            conversation_history = st.session_state.get('conversation_history', [])
+            if set_system_prompt:
+                conversation_history += [{'role': 'system', 'content': system_prompt}, {'role': 'user', 'content': question}]
+            else:
+                conversation_history += [{'role': 'user', 'content': question}]
+            response = ""
+            stream = chat(model=model, messages=conversation_history, stream=True)
+            for chunk in stream:
+                if 'message' in chunk:
+                    content = chunk['message']['content']
+                    response += content
+            conversation_history.append({'role': 'assistant', 'content': response})
+            st.session_state['conversation_history'] = conversation_history
+            st.session_state['request_in_progress'] = False
+            return response
+        return ""
 
-def generate_base_response(question, history, model, assistant_name, system_prompt):
-    history.append({'role': 'system', 'content': system_prompt})
-    history.append({'role': 'user', 'content': question})
-    stream = chat(
-        model=model,
-        messages=history,
-        stream=True,
-    )
-    print(f'{assistant_name}: ', end='', flush=True)
-    response = ""
-    for chunk in stream:
-        if 'message' in chunk:
-            content = chunk['message']['content']
-            response += content
-            print(content, end='', flush=True)
-    print('\n')
-    history.append({'role': 'assistant', 'content': response})
-    return response
+    def display_chat(self):
+        if 'conversation_history' in st.session_state:
+            for message in st.session_state['conversation_history']:
+                if message['role'] == 'system':
+                    st.markdown(f"<div style='text-align: center; color: red; font-size: 16px;'>⚙️ {message['content']}</div>", unsafe_allow_html=True)
+                elif message['role'] == 'user':
+                    st.markdown(f"<div style='text-align: right; color: white;'>👤 {message['content']}</div>", unsafe_allow_html=True)
+                else:
+                    st.markdown(f"<div style='text-align: left; color: grey;'>🤖 {message['content']}</div>", unsafe_allow_html=True)
+        st.markdown("<hr>", unsafe_allow_html=True)  # Visual separator
 
-def main():
-    print("Welcome to the conversational AI!")
-    load_history = input("Do you want to load the previous chat history? (yes/no): ").strip().lower()
-    conversation_history = load_chat_history() if load_history == 'yes' else []
+    def run(self):
+        st.set_page_config(page_title="Conversational AI", page_icon=":robot_face:")
+        st.title("Chat with AI")
 
-    print("Type 'quit' to exit the conversation.\n")
-    model_list = {1: 'mixtral', 2: 'mistral:7b-instruct-v0.2-fp16', 3: 'dolphin-mixtral'}
-    prompts = load_prompts('./src/prompts/system_prompts.json')
+        with st.sidebar:
+            model_choice = st.selectbox("Select a model:", list(self.model_list.values()))
+            prompt_id = st.selectbox("Select a prompt:", list(self.prompts.keys()), format_func=lambda x: self.prompts[x]['one_word_description'])
+            system_prompt = self.get_system_prompt(prompt_id)
 
-    # Model selection handling
-    print("Select a model to use:")
-    for key, value in model_list.items():
-        print(f"{key}: {value}")
-    model_choice = input("Enter the number of the model you want to use: ")
-    if model_choice.isdigit() and int(model_choice) in model_list:
-        model = model_list[int(model_choice)]
-    else:
-        model = model_list[2]  # Default to 'mistral:7b-instruct-v0.2-fp16'
-        print(f"Invalid model choice. Using default model '{model}'.")
+        chat_container = st.container()
+        with chat_container:
+            self.display_chat()
 
-    # System prompt selection
-    print("Available System Prompts:")
-    for key, value in prompts.items():
-        print(f"{key}: {value['one_word_description']} - {value['description']}")
-    prompt_id = input("Enter the ID of the system prompt you want to use (leave blank for default): ")
-    system_prompt = get_system_prompt(prompts, prompt_id)
+        if 'input_key' not in st.session_state:
+            st.session_state.input_key = 0
 
-    assistant_name = input("Enter the name for the assistant: ")
+        user_input = st.text_input("You:", key=f"user_input_{st.session_state.input_key}", disabled=st.session_state.get('request_in_progress', False))
 
-    while True:
-        user_input = input("You: ")
-        if user_input.lower() == 'quit':
-            save_chat_history(conversation_history)
-            print("Goodbye!")
-            break
-        generate_base_response(user_input, conversation_history, model, assistant_name, system_prompt)
+        if st.button("Send", disabled=st.session_state.get('request_in_progress', False)) or (user_input and user_input != st.session_state.get('last_input')):
+            if self.set_system_prompt:
+                if user_input:
+                    response = self.generate_response(user_input, model_choice, system_prompt, set_system_prompt=False)
+                    st.session_state.input_key += 1  # Increment the key to reset the input box
+                    st.rerun()
+
+        if st.button("Clear Chat"):
+            st.session_state['conversation_history'] = []
+            st.session_state['request_in_progress'] = False
+            st.rerun()
 
 if __name__ == '__main__':
-    main()
+    if 'conversation_history' not in st.session_state:
+        st.session_state['conversation_history'] = []
+    if 'request_in_progress' not in st.session_state:
+        st.session_state['request_in_progress'] = False
+    app = ConversationalAIApp()
+    app.run()
