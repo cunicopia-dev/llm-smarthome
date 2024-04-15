@@ -32,12 +32,14 @@ class ConversationalAIApp:
         return self.prompts.get(prompt_id, self.prompts['1'])['description']
 
     def save_chat_history(self):
-        chat_id = uuid.uuid4().hex
+        chat_id = st.session_state.get('chat_id', uuid.uuid4().hex)
+        st.session_state['chat_id'] = chat_id  # Save the chat_id in the session state
         filename = f'chat_{chat_id}.json'
         filepath = os.path.join('./chats', filename)
         with open(filepath, 'w') as file:
             json.dump(st.session_state['conversation_history'], file, indent=4)
         return filename
+
 
     def load_chat_histories(self):
         chat_files = [f for f in os.listdir('./chats') if f.endswith('.json')]
@@ -45,6 +47,10 @@ class ConversationalAIApp:
         return chat_files
 
     def load_chat_history(self, filename):
+        # Extract chat_id from the filename and store it in session state
+        chat_id = filename.split('_')[1].split('.')[0]
+        st.session_state['chat_id'] = chat_id
+        # Load the chat history as before
         filepath = os.path.join('./chats', filename)
         with open(filepath, 'r') as file:
             st.session_state['conversation_history'] = json.load(file)
@@ -52,8 +58,20 @@ class ConversationalAIApp:
 
     def display_chat_selector(self):
         chat_files = self.load_chat_histories()
-        selected_chat = st.sidebar.selectbox("Select a previous chat:", [""] + chat_files)
-        if selected_chat:
+        current_chat = f'chat_{st.session_state.get("chat_id", "")}.json'
+        
+        # Set a default index for the selectbox
+        default_index = 0
+        
+        # If the current chat is in the chat_files, set that as the default index
+        if current_chat in chat_files:
+            default_index = chat_files.index(current_chat) + 1  # +1 because of the empty string at the start
+
+        # Display the select box with the default index
+        selected_chat = st.sidebar.selectbox("Select a previous chat:", [""] + chat_files, index=default_index)
+        
+        # Load the chat history if a chat is selected
+        if selected_chat and selected_chat != current_chat:
             self.load_chat_history(selected_chat)
 
 
@@ -114,6 +132,9 @@ class ConversationalAIApp:
 
         if 'input_key' not in st.session_state:
             st.session_state.input_key = 0
+
+        if 'chat_id' not in st.session_state:
+            st.session_state['chat_id'] = uuid.uuid4().hex 
 
         user_input = st.text_input("You:", key=f"user_input_{st.session_state.input_key}", disabled=st.session_state.get('request_in_progress', False))
 
