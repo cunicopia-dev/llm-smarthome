@@ -1,6 +1,9 @@
 import streamlit as st
 import json
 from ollama import chat
+import datetime
+import uuid
+import os
 
 class ConversationalAIApp:
     def __init__(self):
@@ -14,12 +17,45 @@ class ConversationalAIApp:
             6: 'codegemma:7b-instruct-fp16'
         }
 
+        self.colors = {
+            'system': '#E8E8E8',  # Light grey for system messages
+            'user': '#D6EAF8',    # Very light blue for user messages
+            'assistant': '#D5F5E3'  # Very light green for assistant messages
+        }
+
+
     def load_prompts(self, file_path):
         with open(file_path, 'r') as file:
             self.prompts = json.load(file)
 
     def get_system_prompt(self, prompt_id=None):
         return self.prompts.get(prompt_id, self.prompts['1'])['description']
+
+    def save_chat_history(self):
+        chat_id = uuid.uuid4().hex
+        filename = f'chat_{chat_id}.json'
+        filepath = os.path.join('./chats', filename)
+        with open(filepath, 'w') as file:
+            json.dump(st.session_state['conversation_history'], file, indent=4)
+        return filename
+
+    def load_chat_histories(self):
+        chat_files = [f for f in os.listdir('./chats') if f.endswith('.json')]
+        chat_files.sort(reverse=True)  # Optional: sort by creation date, newest first
+        return chat_files
+
+    def load_chat_history(self, filename):
+        filepath = os.path.join('./chats', filename)
+        with open(filepath, 'r') as file:
+            st.session_state['conversation_history'] = json.load(file)
+            st.session_state['set_system_prompt'] = False
+
+    def display_chat_selector(self):
+        chat_files = self.load_chat_histories()
+        selected_chat = st.sidebar.selectbox("Select a previous chat:", [""] + chat_files)
+        if selected_chat:
+            self.load_chat_history(selected_chat)
+
 
     def generate_response(self, question, model, system_prompt):
         if question.strip():  # Ensure we don't process empty questions
@@ -45,13 +81,21 @@ class ConversationalAIApp:
     def display_chat(self):
         if 'conversation_history' in st.session_state:
             for message in st.session_state['conversation_history']:
+                timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                role = message['role'].capitalize()
+                color = self.colors[message['role']]
+                name_map = {'user': 'User', 'assistant': 'Assistant', 'system': 'System'}
+                name = name_map[message['role']]
+                
                 if message['role'] == 'system':
-                    st.markdown(f"<div style='text-align: center; color: red; font-size: 16px;'>⚙️ {message['content']}</div>", unsafe_allow_html=True)
-                elif message['role'] == 'user':
-                    st.markdown(f"<div style='text-align: right; color: white; font-size: 16px;'>👤 {message['content']}</div>", unsafe_allow_html=True)
-                else:  # 'assistant'
-                    st.markdown(f"<div style='text-align: left; color: grey; font-size: 16px;'>🤖 {message['content']}</div>", unsafe_allow_html=True)
-        st.markdown("<hr>", unsafe_allow_html=True)  # Visual separator
+                    html_content = f"<div style='padding: 8px;'><strong>{name}</strong> <small>({timestamp})</small><hr style='margin-top: 3px; margin-bottom: 6px;'><div style='background-color: {color}; padding: 6px; border-radius: 8px;'>{message['content']}</div></div>"
+                else:
+                    align = 'right' if message['role'] == 'user' else 'left'
+                    html_content = f"<div style='text-align: {align}; padding: 8px;'><strong>{name}</strong> <small>({timestamp})</small><hr style='margin-top: 3px; margin-bottom: 6px;'><div style='background-color: {color}; padding: 6px; border-radius: 8px;'>{message['content']}</div></div>"
+                    
+                st.markdown(html_content, unsafe_allow_html=True)
+        st.markdown("<hr>", unsafe_allow_html=True)  # Visual separator at the bottom of the chat
+
 
     def run(self):
         st.set_page_config(page_title="Conversational AI", page_icon=":robot_face:")
@@ -61,6 +105,8 @@ class ConversationalAIApp:
             model_choice = st.selectbox("Select a model:", list(self.model_list.values()))
             prompt_id = st.selectbox("Select a prompt:", list(self.prompts.keys()), format_func=lambda x: self.prompts[x]['one_word_description'])
             system_prompt = self.get_system_prompt(prompt_id)
+
+            self.display_chat_selector()
 
         chat_container = st.container()
         with chat_container:
@@ -74,6 +120,7 @@ class ConversationalAIApp:
         if st.button("Send", disabled=st.session_state.get('request_in_progress', False)) and user_input and not st.session_state.get('last_input', '') == user_input:
             response = self.generate_response(user_input, model_choice, system_prompt)
             st.session_state['last_input'] = user_input  # Track last input to prevent duplication
+            self.save_chat_history()  # Save after sending message
             st.session_state.input_key += 1  # Increment the key to reset the input box
             st.rerun()
 
