@@ -6,9 +6,12 @@ class ConversationalAIApp:
     def __init__(self):
         self.load_prompts('./src/prompts/system_prompts.json')
         self.model_list = {
-            1: 'mixtral',
+            1: 'llama2:13b-chat-q8_0',
+            2: 'gemma:7b-instruct-v1.1-fp16',
             2: 'mistral:7b-instruct-v0.2-fp16',
-            3: 'dolphin-mixtral'
+            3: 'dolphin-mixtral',
+            5: 'mixtral:latest',
+            6: 'codegemma:7b-instruct-fp16'
         }
 
     def load_prompts(self, file_path):
