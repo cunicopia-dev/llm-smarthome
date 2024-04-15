@@ -23,17 +23,17 @@ class ConversationalAIApp:
         if question.strip():  # Ensure we don't process empty questions
             st.session_state['request_in_progress'] = True
             conversation_history = st.session_state.get('conversation_history', [])
-            if set_system_prompt:
-                conversation_history += [{'role': 'system', 'content': system_prompt}, {'role': 'user', 'content': question}]
-            else:
-                conversation_history += [{'role': 'user', 'content': question}]
+            if set_system_prompt and 'system' not in [msg['role'] for msg in conversation_history[-2:]]:
+                conversation_history.append({'role': 'system', 'content': system_prompt})
+            conversation_history.append({'role': 'user', 'content': question})
             response = ""
             stream = chat(model=model, messages=conversation_history, stream=True)
             for chunk in stream:
                 if 'message' in chunk:
                     content = chunk['message']['content']
                     response += content
-            conversation_history.append({'role': 'assistant', 'content': response})
+            if response:  # Append response only if it's non-empty
+                conversation_history.append({'role': 'assistant', 'content': response})
             st.session_state['conversation_history'] = conversation_history
             st.session_state['request_in_progress'] = False
             return response
@@ -45,9 +45,9 @@ class ConversationalAIApp:
                 if message['role'] == 'system':
                     st.markdown(f"<div style='text-align: center; color: red; font-size: 16px;'>⚙️ {message['content']}</div>", unsafe_allow_html=True)
                 elif message['role'] == 'user':
-                    st.markdown(f"<div style='text-align: right; color: white;'>👤 {message['content']}</div>", unsafe_allow_html=True)
-                else:
-                    st.markdown(f"<div style='text-align: left; color: grey;'>🤖 {message['content']}</div>", unsafe_allow_html=True)
+                    st.markdown(f"<div style='text-align: right; color: white; font-size: 16px;'>👤 {message['content']}</div>", unsafe_allow_html=True)
+                else:  # 'assistant'
+                    st.markdown(f"<div style='text-align: left; color: grey; font-size: 16px;'>🤖 {message['content']}</div>", unsafe_allow_html=True)
         st.markdown("<hr>", unsafe_allow_html=True)  # Visual separator
 
     def run(self):
@@ -68,16 +68,17 @@ class ConversationalAIApp:
 
         user_input = st.text_input("You:", key=f"user_input_{st.session_state.input_key}", disabled=st.session_state.get('request_in_progress', False))
 
-        if st.button("Send", disabled=st.session_state.get('request_in_progress', False)) or (user_input and user_input != st.session_state.get('last_input')):
-            if self.set_system_prompt:
-                if user_input:
-                    response = self.generate_response(user_input, model_choice, system_prompt, set_system_prompt=False)
-                    st.session_state.input_key += 1  # Increment the key to reset the input box
-                    st.rerun()
+        if st.button("Send", disabled=st.session_state.get('request_in_progress', False)) and user_input:
+            response = self.generate_response(user_input, model_choice, system_prompt, self.set_system_prompt)
+            self.set_system_prompt = False  # Reset after the first system prompt has been added
+            st.session_state['last_input'] = user_input  # Track last input to prevent duplication
+            st.session_state.input_key += 1  # Increment the key to reset the input box
+            st.rerun()
 
         if st.button("Clear Chat"):
             st.session_state['conversation_history'] = []
             st.session_state['request_in_progress'] = False
+            st.session_state['last_input'] = ""  # Clear the last input
             st.rerun()
 
 if __name__ == '__main__':
@@ -85,5 +86,7 @@ if __name__ == '__main__':
         st.session_state['conversation_history'] = []
     if 'request_in_progress' not in st.session_state:
         st.session_state['request_in_progress'] = False
+    if 'last_input' not in st.session_state:
+        st.session_state['last_input'] = ""
     app = ConversationalAIApp()
     app.run()
