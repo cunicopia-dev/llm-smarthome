@@ -32,13 +32,45 @@ class ConversationalAIApp:
         return self.prompts.get(prompt_id, self.prompts['1'])['description']
 
     def save_chat_history(self):
-        chat_id = st.session_state.get('chat_id', uuid.uuid4().hex)
-        st.session_state['chat_id'] = chat_id  # Save the chat_id in the session state
-        filename = f'chat_{chat_id}.json'
+        if 'chat_title' not in st.session_state or not st.session_state['chat_title']:
+            initial_message = st.session_state['conversation_history'][1]['content']  # Assuming the second entry is the user's first message
+
+            # Generate chat title after first user message
+            
+            st.session_state['chat_title'] = self.generate_chat_title()
+        
+        # Now use the chat title in the filename
+        filename = f"{st.session_state['chat_title']}.json".replace(" ", "_")
         filepath = os.path.join('./chats', filename)
         with open(filepath, 'w') as file:
             json.dump(st.session_state['conversation_history'], file, indent=4)
         return filename
+
+    # TODO: Make this work. Right now something strange is happening with the model
+    def generate_chat_title(self):
+        if 'conversation_history' not in st.session_state or not st.session_state['conversation_history']:
+            return 'New_Chat'
+
+        # Directly use the conversation history; no need to transform it into a single string
+        title_messages = st.session_state['conversation_history']
+
+        # Add a message to clearly instruct the model its job is to generate a chat title
+        # title_messages.append({'role': 'system', 'content': 'Please generate a title for this chat, based on the conversation so far. Make sure it is maximum 3 words long.'})
+
+
+        # Assuming 'chat' is a method for interacting with your language model
+        try:
+            response = chat(model=self.model_list[1], messages=title_messages)
+            if response:
+                title_words = response.split()
+                title = '_'.join(title_words[:min(5, len(title_words))])  # Up to 5 words
+                return title
+            else:
+                raise ValueError("No valid response from the model.")
+        except Exception as e:
+            # Properly handle errors, log them if necessary
+            print(f"Error generating chat title: {str(e)}")
+            return 'Chat_' + uuid.uuid4().hex[:8]
 
 
     def load_chat_histories(self):
@@ -140,6 +172,8 @@ class ConversationalAIApp:
 
         if st.button("Send", disabled=st.session_state.get('request_in_progress', False)) and user_input and not st.session_state.get('last_input', '') == user_input:
             response = self.generate_response(user_input, model_choice, system_prompt)
+            if len(st.session_state['conversation_history']) == 2:  # One system prompt and one user message
+                self.save_chat_history()  # Save the chat history after the first user message
             st.session_state['last_input'] = user_input  # Track last input to prevent duplication
             self.save_chat_history()  # Save after sending message
             st.session_state.input_key += 1  # Increment the key to reset the input box
