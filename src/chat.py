@@ -131,7 +131,10 @@ class ConversationalAIApp:
                 if 'message' in chunk:
                     content = chunk['message']['content']
                     response += content
+                 
             if response:  # Append response only if it's non-empty
+                response = response.strip()
+                response = "\n" + response 
                 conversation_history.append({'role': 'assistant', 'content': response})
             st.session_state['conversation_history'] = conversation_history
             st.session_state['request_in_progress'] = False
@@ -150,35 +153,28 @@ class ConversationalAIApp:
                 timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                 role = message['role']
                 color = self.colors[role]
-                name_map = {'user': 'User', 'assistant': 'Assistant', 'system': 'System'}
+                name_map = {'user': 'You', 'assistant': 'Assistant', 'system': 'System'}
                 name = name_map[role]
 
-                # Define FontAwesome icons for each role
                 icon_map = {
-                    'user': '<i class="far fa-user-circle"></i>',  # far for regular (outlined) icons, fas for solid
+                    'user': '<i class="far fa-user-circle"></i>',
                     'assistant': '<i class="far fa-comments"></i>',
                     'system': '<i class="fas fa-project-diagram"></i>'
                 }
                 icon = icon_map[role]
 
-                # Message content with adjustable div
-                content_html = f"<div style='display: inline-block; background-color: {color}; padding: 6px 12px; border-radius: 12px; max-width: 80%;'>{message['content']}</div>"
-
-                # HTML content with alignment and icons
-                if role == 'system':
-                    html_content = f"""
-                    <div style='margin-bottom: 10px;'>
-                        <p style='background-color: {color}; color: #6c757d; padding: 8px 12px; border-radius: 12px; font-size: 0.9em;'>
-                            {icon} <strong>{name}:</strong> {message['content']}
-                        </p>
-                    </div>
-                    """
+                if role == 'assistant':
+                    # Directly render the Markdown content if it's from the assistant
+                    st.markdown(f"{icon} **{name}**", unsafe_allow_html=True)
+                    st.markdown(message['content'], unsafe_allow_html=True)
                 else:
+                    # Render other messages normally
+                    content_html = f"<div style='display: inline-block; background-color: {color}; padding: 6px 12px; border-radius: 12px; max-width: 80%;'>{message['content']}</div>"
                     align = 'right' if role == 'user' else 'left'
-                    html_content = f"<div style='text-align: {align}; padding: 4px;'><strong>{icon} {name}</strong> <small>({timestamp})</small><br>{content_html}</div>"
-
-                st.markdown(html_content, unsafe_allow_html=True)
-        st.markdown("<hr>", unsafe_allow_html=True)
+                    html_content = f"<div style='text-align: {align}; padding: 4px;'>{icon} <strong>{name}</strong> <small> | {timestamp}</small><br>{content_html}</div>"
+                    st.markdown(html_content, unsafe_allow_html=True)
+                    
+            st.markdown("<hr>", unsafe_allow_html=True)
 
 
     def run(self):
