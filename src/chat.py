@@ -163,7 +163,16 @@ class ConversationalAIApp:
                 }
                 icon = icon_map[role]
 
-                if role == 'assistant':
+                if role == 'system':
+                    html_content = f"""
+                    <div style='margin-bottom: 10px;'>
+                        <p style='background-color: {color}; color: #6c757d; padding: 8px 12px; border-radius: 12px; font-size: 0.9em;'>
+                            {icon} <strong>{name}:</strong> {message['content']}
+                        </p>
+                    </div>
+                    """
+                    st.markdown(html_content, unsafe_allow_html=True)
+                elif role == 'assistant':
                     # Directly render the Markdown content if it's from the assistant
                     st.markdown(f"{icon} **{name}**", unsafe_allow_html=True)
                     st.markdown(message['content'], unsafe_allow_html=True)
@@ -178,10 +187,6 @@ class ConversationalAIApp:
 
 
     def run(self):
-
-
-
-
         st.set_page_config(page_title="AI Conversations Portal", page_icon=":robot:")
 
         hide_decoration_bar_style = '''
@@ -210,10 +215,6 @@ class ConversationalAIApp:
                 # Generate new chat ID
                 st.session_state['chat_id'] = uuid.uuid4().hex
                 st.rerun()
-            
-
-
-
 
         chat_container = st.container()
         with chat_container:
