@@ -32,45 +32,13 @@ class ConversationalAIApp:
         return self.prompts.get(prompt_id, self.prompts['1'])['description']
 
     def save_chat_history(self):
-        if 'chat_title' not in st.session_state or not st.session_state['chat_title']:
-            initial_message = st.session_state['conversation_history'][1]['content']  # Assuming the second entry is the user's first message
-
-            # Generate chat title after first user message
-            
-            st.session_state['chat_title'] = self.generate_chat_title()
-        
-        # Now use the chat title in the filename
-        filename = f"{st.session_state['chat_title']}.json".replace(" ", "_")
+        chat_id = st.session_state.get('chat_id', uuid.uuid4().hex)
+        st.session_state['chat_id'] = chat_id  # Save the chat_id in the session state
+        filename = f'chat_{chat_id}.json'
         filepath = os.path.join('./chats', filename)
         with open(filepath, 'w') as file:
             json.dump(st.session_state['conversation_history'], file, indent=4)
         return filename
-
-    # TODO: Make this work. Right now something strange is happening with the model
-    def generate_chat_title(self):
-        if 'conversation_history' not in st.session_state or not st.session_state['conversation_history']:
-            return 'New_Chat'
-
-        # Directly use the conversation history; no need to transform it into a single string
-        title_messages = st.session_state['conversation_history']
-
-        # Add a message to clearly instruct the model its job is to generate a chat title
-        # title_messages.append({'role': 'system', 'content': 'Please generate a title for this chat, based on the conversation so far. Make sure it is maximum 3 words long.'})
-
-
-        # Assuming 'chat' is a method for interacting with your language model
-        try:
-            response = chat(model=self.model_list[1], messages=title_messages)
-            if response:
-                title_words = response.split()
-                title = '_'.join(title_words[:min(5, len(title_words))])  # Up to 5 words
-                return title
-            else:
-                raise ValueError("No valid response from the model.")
-        except Exception as e:
-            # Properly handle errors, log them if necessary
-            print(f"Error generating chat title: {str(e)}")
-            return 'Chat_' + uuid.uuid4().hex[:8]
 
 
     def load_chat_histories(self):
@@ -100,7 +68,7 @@ class ConversationalAIApp:
             default_index = chat_files.index(current_chat) + 1  # +1 because of the empty string at the start
 
         # Display the select box with the default index
-        selected_chat = st.sidebar.selectbox("Select a previous chat:", [""] + chat_files, index=default_index)
+        selected_chat = st.sidebar.selectbox("Select a Saved Chat:", [""] + chat_files, index=default_index)
         
         # Load the chat history if a chat is selected
         if selected_chat and selected_chat != current_chat:
@@ -148,12 +116,15 @@ class ConversationalAIApp:
 
 
     def run(self):
-        st.set_page_config(page_title="Conversational AI", page_icon=":robot_face:")
-        st.title("Chat with AI")
+        st.set_page_config(page_title="AI Conversations Portal", page_icon=":robot:")
+        st.title("Interactive AI Chat System")
+        st.markdown("*Sometimes AI produces wrong results.*")
+        st.markdown("---")
+        st.markdown("This is an interactive chat system that allows you to chat with an AI assistant. You can select a model to your left and a system persona to start a conversation. You can also save and load chat histories.")
 
         with st.sidebar:
-            model_choice = st.selectbox("Select a model:", list(self.model_list.values()))
-            prompt_id = st.selectbox("Select a prompt:", list(self.prompts.keys()), format_func=lambda x: self.prompts[x]['one_word_description'])
+            model_choice = st.selectbox("Select a Model:", list(self.model_list.values()))
+            prompt_id = st.selectbox("Select a System Persona:", list(self.prompts.keys()), format_func=lambda x: self.prompts[x]['one_word_description'])
             system_prompt = self.get_system_prompt(prompt_id)
 
             self.display_chat_selector()
@@ -170,10 +141,9 @@ class ConversationalAIApp:
 
         user_input = st.text_input("You:", key=f"user_input_{st.session_state.input_key}", disabled=st.session_state.get('request_in_progress', False))
 
+        # Send the message 
         if st.button("Send", disabled=st.session_state.get('request_in_progress', False)) and user_input and not st.session_state.get('last_input', '') == user_input:
             response = self.generate_response(user_input, model_choice, system_prompt)
-            if len(st.session_state['conversation_history']) == 2:  # One system prompt and one user message
-                self.save_chat_history()  # Save the chat history after the first user message
             st.session_state['last_input'] = user_input  # Track last input to prevent duplication
             self.save_chat_history()  # Save after sending message
             st.session_state.input_key += 1  # Increment the key to reset the input box
