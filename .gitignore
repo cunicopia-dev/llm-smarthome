@@ -2,6 +2,7 @@
 protobuf-3.19.5/
 onnx/
 data/
+chats/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
