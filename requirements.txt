@@ -21,3 +21,4 @@ unstructured-inference
 pikepdf
 pocketsphinx
 streamlit
+crewai
