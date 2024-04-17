@@ -1,0 +1,6 @@
+ollama:
+  api_base: http://localhost:11434/v1
+  model_name: llama2:13b-chat-q8_0
+  tools:
+    serper:
+      api_key: 12ec3cdbe21024e53f635d5675281be3ce935698
