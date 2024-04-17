@@ -1,34 +1,33 @@
 from crewai import Agent
 from textwrap import dedent
-from langchain.llms import OpenAI, Ollama
-from langchain_openai import ChatOpenAI
+from langchain_community.llms import Ollama
+from langchain_community.tools import DuckDuckGoSearchRun
 
+search_tool = DuckDuckGoSearchRun()
 
-# This is an example of how to define custom agents.
-# You can define as many agents as you want.
-# You can also define custom tasks in tasks.py
 class CustomAgents:
     def __init__(self):
-        self.Ollama = Ollama(model="llama2:13b-chat-q8_0")
+        self.ollama_model = "mistral:7b-instruct-v0.2-fp16"
+        self.Ollama = Ollama(model=self.ollama_model)
 
-    def agent_1_name(self):
+    def information_manager(self):
         return Agent(
-            role="Define agent 1 role here",
-            backstory=dedent(f"""Define agent 1 backstory here"""),
-            goal=dedent(f"""Define agent 1 goal here"""),
-            # tools=[tool_1, tool_2],
+            role="Gathers and organizes information from various sources to provide comprehensive data outputs.",
+            backstory=dedent("""The Information Manager is adept at scanning vast data sets to find relevant facts and figures."""),
+            goal=dedent("""To efficiently collect and organize information, providing a reliable foundation for further analysis."""),
             allow_delegation=False,
             verbose=True,
             llm=self.Ollama,
+            tools=[search_tool]
         )
 
-    def agent_2_name(self):
+    def evaluation_agent(self):
         return Agent(
-            role="Define agent 2 role here",
-            backstory=dedent(f"""Define agent 2 backstory here"""),
-            goal=dedent(f"""Define agent 2 goal here"""),
-            # tools=[tool_1, tool_2],
+            role="Analyzes gathered data, refines it, and presents it in a clear, user-friendly format with key insights.",
+            backstory=dedent("""The Evaluation Agent specializes in transforming raw data into actionable insights and concise summaries."""),
+            goal=dedent("""To present information in an accessible and aesthetically pleasing manner, maximizing user understanding and engagement."""),
             allow_delegation=False,
             verbose=True,
             llm=self.Ollama,
+            tools=[search_tool]
         )

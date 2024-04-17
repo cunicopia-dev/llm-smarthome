@@ -5,10 +5,7 @@ from langchain_community.llms import Ollama
 from textwrap import dedent
 from agents import CustomAgents
 from tasks import CustomTasks
-from langchain_community.tools import DuckDuckGoSearchRun
 
-search_tool = DuckDuckGoSearchRun()
-os.environ["OPENAI_API_KEY"] = ""
 
 class CustomCrew:
     def __init__(self, var1, var2):
@@ -19,15 +16,14 @@ class CustomCrew:
         agents = CustomAgents()
         tasks = CustomTasks()
 
-        custom_agent_1 = agents.agent_1_name()
-        custom_agent_2 = agents.agent_2_name()
+        custom_agent_1 = agents.information_manager()
+        custom_agent_2 = agents.evaluation_agent()
 
         custom_task_1 = tasks.task_1_name(custom_agent_1, self.var1, self.var2)
-        custom_task_2 = tasks.task_2_name(custom_agent_2)
 
         crew = Crew(
             agents=[custom_agent_1, custom_agent_2],
-            tasks=[custom_task_1, custom_task_2],
+            tasks=[custom_task_1],
             verbose=True,
         )
         result = crew.kickoff()
